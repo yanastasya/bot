@@ -12,10 +12,9 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMINS = ast.literal_eval(os.getenv("ADMINS"))
+MESSAGES = {}
 
 bot = Bot(token=BOT_TOKEN)
-
-MESSAGES = {}
 
 
 def message_is_from_admin(update):
@@ -40,7 +39,6 @@ def start_message(update, context):
             "Если кто-то из других администраторов ответит на поступившее ls"
             "сообщение - бот пришлет уведомление."
         )
-
     context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
 
