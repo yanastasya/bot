@@ -12,7 +12,9 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMINS = ast.literal_eval(os.getenv("ADMINS"))
-MESSAGES = {}
+MESSAGES = {} # временно вместо БД. сохранение пар message_content : user_id для 
+              # извлечения user_id при отправке ответов от админов.
+              # Очищается по мере необходимости с помощью команды clear_history от админов
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -32,12 +34,11 @@ def start_message(update, context):
     else:
         text = (
             "Привет! Ты - администратор данного бота."
-            "Сюда поступают вопросы от интересующихся проектом DevBrigde."
-            "Отвечать на поступающие сообщения можно текстом и/или"
+            "Отвечать на поступающие сообщения можно текстом и/или "
             "картинкой с помощью Reply. "
             "Это важно! Иначе ответ не увидит никто, кроме тебя."
-            "Если кто-то из других администраторов ответит на поступившее ls"
-            "сообщение - бот пришлет уведомление."
+            "Если кто-то из других администраторов ответит на поступившее "
+            "сообщение - бот пришлет тебе уведомление."
         )
     context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
@@ -70,6 +71,26 @@ def clear_history(update, context):
         MESSAGES.clear()
 
 
+def message_content(message):
+    """Содержимое сообщение в зависимости от того, что было отправлено:
+    текст, картинка, фото, документ, аудио. Используется для связи с id
+    автора сообщения."""
+    content = ""
+    if message.text:
+        content = str(message.text)
+
+    elif message.photo != []:
+        content = message.photo[-1].file_unique_id
+
+    elif message.document != {}:
+        content = message.document.file_unique_id
+
+    elif message.audio != {}:
+        content = message.audio.file_unique_id
+
+    return content
+
+
 def router_for_incoming_messages(update, context):
     """
     Распределение входящих боту сообщений:
@@ -80,9 +101,8 @@ def router_for_incoming_messages(update, context):
     текстом сообщения сохраняются в словаре MESSAGES.
     """
     if not message_is_from_admin(update):
-        MESSAGES[str(update.message.text)] = int(update.message.chat.id)
+        MESSAGES[message_content(update.message)] = int(update.message.chat.id)        
         forward_question_to_admin(update, context)
-
     else:
         admin_reply_to_question(update, context)
 
@@ -100,7 +120,7 @@ def forward_question_to_admin(update, context):
 def admin_reply_to_question(update, context):
     """
     Отправка сообщений от админов пользователям.
-    Админ может отвечать тестом и/или картинкой.
+    Ответ админа может содержать текст, картинку, документ.
     Админ делает reply на поступивший вопрос и сообщение уходит
     в чат бота с пользователем, задавшим вопрос.
     Остальный админы получают информационное сообщение о том,
@@ -109,21 +129,30 @@ def admin_reply_to_question(update, context):
     сообщение с напоминанием.
     """
     if update.message.reply_to_message:
-        question = update.message.reply_to_message
-        user_id = MESSAGES[str(question.text)]
+        question = update.message.reply_to_message        
+        user_id = MESSAGES[message_content(question)]
 
         if update.message.text:
             context.bot.send_message(chat_id=user_id, text=update.message.text)
-
+            answer = str(update.message.text)
         if update.message.photo != []:
             context.bot.send_photo(
                 chat_id=user_id, photo=update.message.photo[-1]
             )
-
+            answer = " ответ содержит картинку"
         if update.message.caption:
             context.bot.send_message(
                 chat_id=user_id, text=update.message.caption
             )
+            answer = (
+                f"Ответ содержит картинку с подписью "
+                f"{update.message.caption}"
+            )
+        if update.message.document != {}:
+            context.bot.send_document(
+                chat_id=user_id, document=update.message.document
+            )
+            answer = " ответ содержит документ"
 
         other_admins = ADMINS.copy()
         del other_admins[update.message.chat.id]
@@ -131,9 +160,9 @@ def admin_reply_to_question(update, context):
             context.bot.send_message(
                 chat_id=admin_id,
                 text=(
-                    f"{ADMINS[update.message.chat.id]} ответил на обращение"
-                    f"{question.text}."
-                    f"Содержание ответа: {update.message.text}"
+                    f"{ADMINS[update.message.chat.id]} ответил на обращение "
+                    f"{question.text}. "
+                    f"Содержание ответа: {answer}"
                 ),
             )
     else:
@@ -181,3 +210,4 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(__name__)
     main()
+
